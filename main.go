@@ -2,6 +2,7 @@ package main
 
 import (
 	"image/png"
+	"io"
 	"net/http"
 	"os"
 
@@ -17,7 +18,7 @@ func convertWebPToPNG(c *gin.Context) {
 		return
 	}
 
-	// Открываем файл
+	// Открываем файл из формы
 	srcFile, err := file.Open()
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Не удалось открыть файл")
@@ -33,22 +34,31 @@ func convertWebPToPNG(c *gin.Context) {
 	}
 
 	// Создаем временный файл для PNG изображения
-	outFile, err := os.Create("output.png")
+	tempFile, err := os.CreateTemp("./", "image-*.png")
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Не удалось создать PNG файл")
+		c.String(http.StatusInternalServerError, "Не удалось создать временный файл")
 		return
 	}
-	defer outFile.Close()
+	defer os.Remove(tempFile.Name()) // Удаляем файл после завершения
+	defer tempFile.Close()
 
-	// Кодируем изображение в PNG формат
-	err = png.Encode(outFile, img)
+	// Кодируем изображение в PNG формат и записываем в временный файл
+	err = png.Encode(tempFile, img)
 	if err != nil {
 		c.String(http.StatusInternalServerError, "Не удалось закодировать PNG изображение")
 		return
 	}
 
-	// Отправляем результат
-	c.File("output.png")
+	// Перемещаем указатель на начало файла для его отправки клиенту
+	_, err = tempFile.Seek(0, io.SeekStart)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "Не удалось прочитать временный файл")
+		return
+	}
+
+	// Отправляем изображение обратно клиенту
+	c.Header("Content-Type", "image/png")
+	c.File(tempFile.Name())
 }
 
 func main() {
